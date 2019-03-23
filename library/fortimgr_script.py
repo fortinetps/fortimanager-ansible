@@ -16,30 +16,31 @@
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-
-from __future__ import absolute_import, division, print_function
-__metaclass__ = type
-
-
-ANSIBLE_METADATA = {'metadata_version': '1.1',
-                    'status': ['preview'],
-                    'supported_by': 'community'}
-
+ANSIBLE_METADATA = {
+    "metadata_version": "1.0",
+    "status": ["preview"],
+    "supported_by": "community"
+}
 
 DOCUMENTATION = '''
 ---
-module: fortimgr_jsonrpc_request
+module: fortimgr_device
 version_added: "2.3"
-short_description: Sends generic json-rpc request
+short_description: Manages ADOM package installs
 description:
-  - Sends generic FortiManager json-rpc API requests
-author: JC Sicard (@jcsicard), derived from Jacob McGill (@jmcgill298) work,, Don Yao (@fortinetps)
+  - Manages FortiManager package installs using jsonrpc API
+author: Jacob McGill (@jmcgill298), Don Yao (@fortinetps)
 options:
+  adom:
+    description:
+      - The ADOM that should have package installed should belong to.
+    required: true
+    type: str
   host:
     description:
       - The FortiManager's Address.
     required: true
-    type: str 
+    type: str
   password:
     description:
       - The password associated with the username account.
@@ -77,59 +78,58 @@ options:
     type: str
   validate_certs:
     description:
-      - Determines whether to validate certs against a trusted certificate file (True), or accept all certs (False)
+      - Determines whether to validate certs against a trusted certificate file (True), or accept all certs (False).
     required: false
     default: False
     type: bool
-  method:
-    description:
-      - The JSON-RPC request method
-    required: true
-    type: str
-    choices: ["get", "add", "set", "update", "delete", "move", "clone", "replace", "exec"]    
-  params:
-    description:
-      - JSON-RPC request parameters (as a JSON list).
-    required: true
-    type: list
 '''
 
 EXAMPLES = '''
-    - name: GET STATUS
-      fortimgr_jsonrpc_request:
-        host: "{{ inventory_hostname }}"
-        username: "{{ username }}"
-        password: "{{ password }}"
-        method: get
-        params: [{url: "/sys/status/"}]
-      register: 
-    
-    - name: CREATE ADOM
-      fortimgr_jsonrpc_request:
-        host: "{{ inventory_hostname }}"
-        username: "{{ username }}"
-        password: "{{ password }}"
-        method: add
-        params: [{
-            url: "/dvmdb/adom",
-            data: [{
-              name: "lab",
-              desc: "lab adom"
-	        }]
-          }]
+  - name: Get Script(s) on FortiManager
+    fortimgr_script:
+      host: 192.168.99.99
+      session_id: "{{ session_id }}"
+      adom: root
+  - name: Add Script to FortiManager
+    fortimgr_script:
+      host: 192.168.99.99
+      session_id: "{{ session_id }}"
+      adom: root
+      script_name: test123
+      script_content: get system status
+  - name: Update Script Content on FortiManager
+    fortimgr_script:
+      host: 192.168.99.99
+      session_id: "{{ session_id }}"
+      adom: root
+      script_name: test123
+      script_content: get system performance status
+      script_method: update
+  - name: Execute Script on FortiManager
+    fortimgr_script:
+      host: 192.168.99.99
+      session_id: "{{ session_id }}"
+      adom: root
+      script_name: test123
+      script_method: exec
+      scope:
+        name: "{{ FGT_HA_GROUPNAME }}",
+        vdom: "root"        
+  - name: Delete Script on FortiManager
+    fortimgr_script:
+      host: 192.168.99.99
+      session_id: "{{ session_id }}"
+      adom: root
+      script_name: test123
+      script_method: delete
 '''
 
 RETURN = '''
-response:
-    description: The json results from ADOM request.
-    returned: Always
-    type: list
-    sample: [{"result": [{"status": {"code": 0, "message": "OK"}, "url": "/dvmdb/adom"}]}]
-status:
-    description: The json-rpc request's repsonse status code and message
+install:
+    description: The json results from install request.
     returned: Always
     type: dict
-    sample: {"code": 0, "message": "OK"}  
+    sample: 
 '''
 
 from ansible.module_utils.fortimgr_utils import *
@@ -138,19 +138,21 @@ def main():
     argument_spec = dict(
         adom=dict(required=False, type="str"),
         host=dict(required=False, type="str"),
-        lock=dict(required=False, type="bool"),
         password=dict(fallback=(env_fallback, ["ANSIBLE_NET_PASSWORD"]), no_log=True),
-        provider=dict(required=False, type="dict"),
         port=dict(required=False, type="int"),
+        provider=dict(required=False, type="dict"),
         session_id=dict(required=False, type="str"),
         use_ssl=dict(required=False, type="bool"),
         username=dict(fallback=(env_fallback, ["ANSIBLE_NET_USERNAME"])),
         validate_certs=dict(required=False, type="bool"),
-        method=dict(required=True, type="str"),
-        params=dict(required=True, type="list")
+        script_name=dict(required=False, type="str"),
+        script_type=dict(choices=["cli", "tcl"], required=False, type="str"),
+        script_content=dict(required=False, type="str"),
+        script_method=dict(choices=["get", "set", "add", "update", "delete", "exec"], required=False, type="str"),
+        script_scope=dict(required=False, type="list")
     )
 
-    module = AnsibleModule(argument_spec, supports_check_mode=False)
+    module = AnsibleModule(argument_spec, supports_check_mode=True)
 
     # handle params and insure they are represented as the data type expected by fortimanager
     host = module.params["host"]
@@ -165,11 +167,15 @@ def main():
     username = module.params["username"]
     password = module.params["password"]
     adom = module.params["adom"]
-    method = module.params["method"]
-    params = module.params["params"]
+    script_method = module.params["script_method"]
+    if script_method is None:
+        script_method = "set"
+    script_type = module.params["script_type"]
+    if script_type is None:
+        script_type = "cli"
 
     # validate required arguments are passed; not used in argument_spec to allow params to be called from provider
-    argument_check = dict(host=host, method=method, params=params)
+    argument_check = dict(adom=adom, host=host)
     for key, val in argument_check.items():
         if not val:
             module.fail_json(msg="{} is required".format(key))
@@ -180,28 +186,39 @@ def main():
 
     # validate successful login or use established session id
     session = FortiManager(host, username, password, use_ssl, validate_certs, adom, **kwargs)
-
     if not session_id:
         session_login = session.login()
         if not session_login.json()["result"][0]["status"]["code"] == 0:
-            module.fail_json(msg="Unable to login")
+            module.fail_json(msg="Unable to login", fortimgr_response=session_login.json())
     else:
         session.session = session_id
 
+    args = dict()
+    if script_method in ["set", "add", "update"]:
+        args = dict(
+            name=module.params["script_name"],
+            type=script_type,
+            content=module.params["script_content"]
+        )
+    elif script_method == "exec":
+        args = dict(
+            adom=module.params["adom"],
+            script=module.params["script_name"],
+            scope=module.params["script_scope"],
+        )
 
+    # "if isinstance(v, bool) or v" should be used if a bool variable is added to args
+    proposed = dict((k, v) for k, v in args.items() if v)
 
-    body = {"method": method, "params": params, "session": session.session}
-    response = session.make_request(body).json()
-
-    results = dict(changed=False, response=[response], status=response["result"][0]["status"])
-     # build results
-    if response["result"][0]["status"]["code"] == 0:    # OK
-        if method in ["add", "set", "update", "delete", "move", "clone", "replace"]:
-            results.update(changed=True)
-            results.update(response=[response, params])
+    response = session.apply_method_on_script(method=script_method, proposed=proposed)
+    if response["result"][0]["status"]["code"] == 0:
+        if "data" in response["result"][0]:
+            if "state" in response["result"][0]["data"]:
+                if response["result"][0]["data"]["state"] == "error":
+                    module.fail_json(**dict(status=response, msg="Apply method:" + script_method + " on script:" + module.params["script_name"] + " was NOT Sucessful; Please Check FortiManager Logs"))
+        results = dict(response=response, changed=True)
     else:
-        module.fail_json(msg="JSON-RPC API Request failed", response=[response], status=response["result"][0]["status"] )
-
+        module.fail_json(**dict(status=response, msg="Apply method:" + script_method + " on script:" + module.params["script_name"] + " was NOT Sucessful; Please Check FortiManager Logs"))
 
     # logout, build in check for future logging capabilities
     if not session_id:
@@ -215,3 +232,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
