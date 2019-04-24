@@ -192,7 +192,7 @@ def main():
     # if state == "present", make sure dynamic interface interface exists on FortiManager
     if state == "present":
         # check if the dynamic interface exists
-        # if fortigate is not specified, that mean we only care about the dynamic interface object on FortiManager
+        # if fortigate is not specified, that mean we only care about the dynamic interface object on FortiManager, no mapping is needed
         if fortigate is None:
             # if dynamic interface is alreay exist
             if response["result"][0]["status"]["code"] == 0:
@@ -200,18 +200,20 @@ def main():
             # else we need to create the new dynamic interface
             else:
                 # dynamic interface info
-                proposed = {"name": name}
+                proposed = {"name": name, "single-intf": False}
                 response = session.add_dynamic_interface(adom, name, proposed)
                 if response["result"][0]["status"]["code"] == 0:
                     module.exit_json(msg="Added dynamic interface {} in adom {} succeed".format(name, adom), changed=True, result=response)
                 else:
                     module.fail_json(msg="Added dynamic interface {} in adom {} failed".format(name, adom), result=response)
-        # else if fortigate is specified, that mean we want to get the real mapping created
+        # else if fortigate is specified, that mean we want to get the real mapping created, also we need to create dynamic interface if it is not there
         else:
+            dynamic_mapping = None
+            add_dynamic_interface = False
+            update_existing_mapping = False
             # if dynamic interface is already exist
             # check if the mapping is also exist
             if response["result"][0]["status"]["code"] == 0:
-                update_existing_mapping = False
                 dynamic_mapping = response["result"][0]["data"].get("dynamic_mapping")
                 if dynamic_mapping is not None:
                     for mapping in dynamic_mapping:
@@ -221,19 +223,43 @@ def main():
                             mapping["local-intf"] = [interface]
                             update_existing_mapping = True
             # else we need to create the new dynamic interface with the new mapping
-            # or we update the existing dynamic interface with with the updated mapping
-            # or we append the new mapping to the existing dynamic interface
+            else:
+                # dynamic interface info
+                proposed = {"name": name, "single-intf": False}
+                response = session.add_dynamic_interface(adom, name, proposed)
+                if response["result"][0]["status"]["code"] != 0:
+                    module.fail_json(msg="Added dynamic interface {} in adom {} failed".format(name, adom), result=response)
+                else:
+                    add_dynamic_interface = True
 
             args = None
-            # new dynamic interface and new mapping
+            # or we update the existing dynamic interface with with the updated mapping
             if update_existing_mapping:
                 args = {
                     "name": name,
+                    "single-intf": False,
                     "dynamic_mapping": dynamic_mapping
                 }
-            elif dynamic_mapping:
+            # new dynamic interface and new mapping
+            elif add_dynamic_interface:
                 args = {
                     "name": name,
+                    "single-intf": False,
+                    "dynamic_mapping": [{
+                        "_scope": [{
+                            "name": fortigate,
+                            "vdom": "root"
+                        }],
+                        "local-intf": interface,
+                    }]
+                }
+            # or we append the new mapping to the existing dynamic interface
+            else:
+                if dynamic_mapping is None:
+                    dynamic_mapping = []
+                args = {
+                    "name": name,
+                    "single-intf": False,
                     "dynamic_mapping": dynamic_mapping
                 }
                 args["dynamic_mapping"].append(
@@ -245,17 +271,6 @@ def main():
                         "local-intf": interface,
                     }
                 )
-            else:
-                args = {
-                    "name": name,
-                    "dynamic_mapping": [{
-                        "_scope": [{
-                            "name": fortigate,
-                            "vdom": "root"
-                        }],
-                        "local-intf": interface,
-                    }]
-                }
 
             proposed = dict((k, v) for k, v in args.items() if v)
             response = session.add_dynamic_interface(adom, name, proposed)
@@ -288,11 +303,12 @@ def main():
             module.fail_json(msg="Unable to delete dynamic interface from FortiManager, this function is not supported yet")
        
 
-        # logout, build in check for future logging capabilities
-        session_logout = session.logout()
-        # if not session_logout.json()["result"][0]["status"]["code"] == 0:
-        #     results["msg"] = "Completed tasks, but unable to logout of FortiManager"
-        #     module.fail_json(**results)
+    # logout, build in check for future logging capabilities
+    # if not session_id:
+    #     session_logout = session.logout()
+    # if not session_logout.json()["result"][0]["status"]["code"] == 0:
+    #     results["msg"] = "Completed tasks, but unable to logout of FortiManager"
+    #     module.fail_json(**results)
 
     # return module.exit_json(**results)
 
