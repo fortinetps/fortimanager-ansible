@@ -20,7 +20,7 @@
 import time
 import requests
 import json
-from ansible.module_utils.basic import AnsibleModule, env_fallback, return_values
+from ansible.module_utils.basic import AnsibleModule, env_fallback
 
 requests.packages.urllib3.disable_warnings()
 
