@@ -158,6 +158,7 @@ def main():
         ip=dict(required=False, type="str"),
         adm_usr=dict(required=False, type="str"),
         adm_pass=dict(required=False, no_log=True),
+        sn=dict(required=False, no_log=True),
     )
 
     module = AnsibleModule(argument_spec, supports_check_mode=True)
@@ -184,6 +185,10 @@ def main():
     ip = module.params["ip"]
     adm_usr = module.params["adm_usr"]
     adm_pass = module.params["adm_pass"]
+    sn = module.params["sn"]
+    faz_mode = False
+    if sn is not None:
+      faz_mode = True
     
     kwargs = dict()
     if port:
@@ -211,17 +216,31 @@ def main():
                 if not val:
                     module.fail_json(msg="{} is required when adding FortiGate to FortiManager".format(key))
 
-            args = dict(
-                adom=adom,
-                flags=["create_task", "nonblocking"],
-                device=dict(
-                    ip=ip,
-                    adm_usr=adm_usr,
-                    adm_pass=adm_pass,
-                    mgmt_mode="fmgfaz",
-                    name=name
-                )
-            )
+            if faz_mode:
+              args = dict(
+                  adom=adom,
+                  flags=["create_task", "nonblocking"],
+                  device=dict(
+                      ip=ip,
+                      adm_usr=adm_usr,
+                      adm_pass=adm_pass,
+                      mgmt_mode="faz",
+                      name=name,
+                      sn=sn
+                  )
+              )
+            else:
+              args = dict(
+                  adom=adom,
+                  flags=["create_task", "nonblocking"],
+                  device=dict(
+                      ip=ip,
+                      adm_usr=adm_usr,
+                      adm_pass=adm_pass,
+                      mgmt_mode="fmgfaz",
+                      name=name
+                  )
+              )
 
             proposed = dict((k, v) for k, v in args.items() if v)
             dev_add = session.add_device(proposed)
