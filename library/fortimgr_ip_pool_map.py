@@ -261,6 +261,13 @@ import time
 import requests
 from ansible.module_utils.basic import AnsibleModule, env_fallback
 
+# FIX for Ansible 2.8 moving this function and making it private
+# greatly simplified for napalm-ansible's use
+def return_values(obj):
+    """ Return native stringified values from datastructures.
+    For use with removing sensitive values pre-jsonification."""
+    yield str(obj)
+
 requests.packages.urllib3.disable_warnings()
 
 
