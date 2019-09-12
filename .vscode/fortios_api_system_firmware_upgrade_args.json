@@ -1,0 +1,13 @@
+{
+    "ANSIBLE_MODULE_ARGS": {
+        "fortigate_ip": "192.168.210.11",
+        "fortigate_username": "admin",
+        "fortigate_password": "fortinet2",
+        "verify": false,
+        "print_current_config": false,
+        "firmware": [{
+            "filename": "./firmware/FGT_VM64_KVM-v6-build0163-FORTINET.out"
+        }]
+    }
+  
+}
