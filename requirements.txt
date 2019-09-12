@@ -1,1 +1,2 @@
 requests
+ansible==2.8.*
