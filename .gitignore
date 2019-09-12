@@ -1,3 +1,5 @@
 nohup.out
 sync.sh
 start.sh
+.vscode/*
+.devcontainer/*
